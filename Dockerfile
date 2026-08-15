@@ -41,6 +41,7 @@ RUN rm -rf /src/build && \
 RUN mkdir -p /pkg/DEBIAN \
     /pkg/usr/lib/x86_64-linux-gnu/qt6/plugins/kf6/kio \
     /pkg/usr/lib/x86_64-linux-gnu/qt6/plugins/kf6/kded \
+    /pkg/usr/share/dbus-1/services \
     /pkg/usr/share/kservices6 \
     /pkg/usr/share/metainfo
 
