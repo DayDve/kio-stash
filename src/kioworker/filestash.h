@@ -1,39 +1,17 @@
-/***************************************************************************
- *   Copyright (C) 2016 by Arnav Dhamija <arnav.dhamija@gmail.com>         *
- *                                                                         *
- *   This program is free software; you can redistribute it and/or modify  *
- *   it under the terms of the GNU General Public License as published by  *
- *   the Free Software Foundation; either version 2 of the License, or     *
- *   (at your option) any later version.                                   *
- *                                                                         *
- *   This program is distributed in the hope that it will be useful,       *
- *   but WITHOUT ANY WARRANTY; without even the implied warranty of        *
- *   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the         *
- *   GNU General Public License for more details.                          *
- *                                                                         *
- *   You should have received a copy of the GNU General Public License     *
- *   along with this program; if not, write to the                         *
- *   Free Software Foundation, Inc.,                                       *
- *   51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA            *
- ***************************************************************************/
-
 #ifndef FILESTASH_H
 #define FILESTASH_H
 
-#include <KIO/ForwardingWorkerBase>
+#include <KIO/WorkerBase>
 #include <QObject>
 #include <QString>
 
-class FileStash : public KIO::ForwardingWorkerBase
+class FileStash : public QObject, public KIO::WorkerBase
 {
     Q_OBJECT
 
 public:
-    FileStash(const QByteArray &pool,
-              const QByteArray &app,
-              const QString &daemonService = "org.kde.kio.StashNotifier",
-              const QString &daemonPath = "/StashNotifier");
-    ~FileStash();
+    FileStash(const QByteArray &pool, const QByteArray &app);
+    ~FileStash() override;
 
     enum NodeType {
         DirectoryNode,
@@ -46,17 +24,9 @@ public:
         QString filePath;
         QString source;
         FileStash::NodeType type;
-
-        dirList()
-        {
-        }
-
-        ~dirList()
-        {
-        }
-
-        dirList(const dirList &obj)
-        {
+        dirList() {}
+        ~dirList() {}
+        dirList(const dirList &obj) {
             filePath = obj.filePath;
             source = obj.source;
             type = obj.type;
@@ -66,19 +36,15 @@ public:
 private:
     void createTopLevelDirEntry(KIO::UDSEntry &entry);
     bool isRoot(const QString &string);
-    bool statUrl(const QUrl &url, KIO::UDSEntry &entry);
     bool createUDSEntry(KIO::UDSEntry &entry, const FileStash::dirList &fileItem);
-    bool copyFileToStash(const QUrl &src, const QUrl &dest, KIO::JobFlags flags);
-    bool copyStashToFile(const QUrl &src, const QUrl &dest, KIO::JobFlags flags);
-    bool copyStashToStash(const QUrl &src, const QUrl &dest, KIO::JobFlags flags);
-    bool deletePath(const QUrl &src);
+    bool copyFileToStash(const QUrl &src, const QUrl &dest);
 
     QStringList setFileList(const QUrl &url);
     QString setFileInfo(const QUrl &url);
     FileStash::dirList createDirListItem(const QString &fileInfo);
 
-    const QString m_daemonService;
-    const QString m_daemonPath;
+    const QString m_daemonService = QStringLiteral("org.kde.kio.StashNotifier");
+    const QString m_daemonPath = QStringLiteral("/StashNotifier");
 
 public:
     KIO::WorkerResult listDir(const QUrl &url) override;
@@ -87,9 +53,6 @@ public:
     KIO::WorkerResult del(const QUrl &url, bool isFile) override;
     KIO::WorkerResult stat(const QUrl &url) override;
     KIO::WorkerResult rename(const QUrl &src, const QUrl &dest, KIO::JobFlags flags) override;
-
-protected:
-    bool rewriteUrl(const QUrl &url, QUrl &newUrl) override;
 };
 
 #endif
