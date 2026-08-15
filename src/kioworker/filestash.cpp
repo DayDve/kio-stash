@@ -3,11 +3,14 @@
 #include <QDBusConnection>
 #include <QDBusMessage>
 #include <QDBusReply>
+#include <QFile>
 #include <QFileInfo>
 #include <QMimeDatabase>
 #include <QMimeType>
 #include <QUrl>
 #include <KLocalizedString>
+#include <KIO/CopyJob>
+#include <KIO/Job>
 
 class KIOPluginForMetaData : public QObject {
     Q_OBJECT
@@ -49,6 +52,39 @@ QString FileStash::setFileInfo(const QUrl &url) {
     msg << url.path();
     QDBusReply<QString> received = QDBusConnection::sessionBus().call(msg);
     return received.value();
+}
+
+KIO::WorkerResult FileStash::get(const QUrl &url) {
+    QString fileInfo = setFileInfo(url);
+    FileStash::dirList item = createDirListItem(fileInfo);
+    if (item.type == NodeType::InvalidNode || item.source.isEmpty()) {
+        return KIO::WorkerResult::fail(KIO::ERR_DOES_NOT_EXIST, url.toDisplayString());
+    }
+    if (item.type == NodeType::DirectoryNode) {
+        return KIO::WorkerResult::fail(KIO::ERR_IS_DIRECTORY, url.toDisplayString());
+    }
+
+    QFile file(item.source);
+    if (!file.open(QIODevice::ReadOnly)) {
+        return KIO::WorkerResult::fail(KIO::ERR_CANNOT_READ, item.source);
+    }
+
+    QMimeDatabase mimeDatabase;
+    QMimeType mime = mimeDatabase.mimeTypeForFile(item.source);
+    mimeType(mime.name());
+    totalSize(file.size());
+
+    QByteArray buffer;
+    buffer.resize(1024 * 64);
+    while (!file.atEnd()) {
+        qint64 bytesRead = file.read(buffer.data(), buffer.size());
+        if (bytesRead > 0) {
+            data(buffer.first(bytesRead));
+        }
+    }
+    file.close();
+    data(QByteArray());
+    return KIO::WorkerResult::pass();
 }
 
 KIO::WorkerResult FileStash::stat(const QUrl &url) {
@@ -162,9 +198,51 @@ bool FileStash::copyFileToStash(const QUrl &src, const QUrl &dest) {
     return reply.type() != QDBusMessage::ErrorMessage;
 }
 
+bool FileStash::copyStashToFile(const QUrl &src, const QUrl &dest, KIO::JobFlags flags) {
+    Q_UNUSED(flags)
+    QString fileInfo = setFileInfo(src);
+    FileStash::dirList item = createDirListItem(fileInfo);
+    if (item.type == NodeType::InvalidNode || item.source.isEmpty()) {
+        return false;
+    }
+    if (item.type == NodeType::FileNode || item.type == NodeType::SymlinkNode) {
+        if (dest.isLocalFile()) {
+            QFile::remove(dest.toLocalFile());
+            return QFile::copy(item.source, dest.toLocalFile());
+        } else {
+            KIO::Job *job = KIO::copy(QUrl::fromLocalFile(item.source), dest, KIO::Overwrite | KIO::HideProgressInfo);
+            return job->exec();
+        }
+    }
+    return false;
+}
+
+bool FileStash::moveStashToFile(const QUrl &src, const QUrl &dest, KIO::JobFlags flags) {
+    Q_UNUSED(flags)
+    QString fileInfo = setFileInfo(src);
+    FileStash::dirList item = createDirListItem(fileInfo);
+    if (item.type == NodeType::InvalidNode || item.source.isEmpty()) {
+        return false;
+    }
+    if (item.type == NodeType::FileNode || item.type == NodeType::SymlinkNode) {
+        bool moved = false;
+        if (dest.isLocalFile()) {
+            QFile::remove(dest.toLocalFile());
+            moved = QFile::rename(item.source, dest.toLocalFile());
+        } else {
+            KIO::Job *job = KIO::move(QUrl::fromLocalFile(item.source), dest, KIO::Overwrite | KIO::HideProgressInfo);
+            moved = job->exec();
+        }
+        if (moved) {
+            del(src, true);
+            return true;
+        }
+    }
+    return false;
+}
+
 KIO::WorkerResult FileStash::copy(const QUrl &src, const QUrl &dest, int permissions, KIO::JobFlags flags) {
     Q_UNUSED(permissions)
-    Q_UNUSED(flags)
     QString fileName = src.fileName();
     if (fileName.isEmpty()) {
         fileName = src.path().split("/").last();
@@ -175,8 +253,16 @@ KIO::WorkerResult FileStash::copy(const QUrl &src, const QUrl &dest, int permiss
         if (copyFileToStash(src, newDestPath)) {
             return KIO::WorkerResult::pass();
         }
-        return KIO::WorkerResult::fail(KIO::ERR_WORKER_DEFINED, i18n("Could not copy."));
+        return KIO::WorkerResult::fail(KIO::ERR_WORKER_DEFINED, i18n("Could not copy to stash."));
     }
+
+    if (src.scheme() == "stash" && dest.scheme() != "stash") {
+        if (copyStashToFile(src, newDestPath, flags)) {
+            return KIO::WorkerResult::pass();
+        }
+        return KIO::WorkerResult::fail(KIO::ERR_WORKER_DEFINED, i18n("Could not copy from stash."));
+    }
+
     return KIO::WorkerResult::fail(KIO::ERR_UNSUPPORTED_ACTION, src.scheme());
 }
 
@@ -191,9 +277,19 @@ KIO::WorkerResult FileStash::del(const QUrl &url, bool isFile) {
 }
 
 KIO::WorkerResult FileStash::rename(const QUrl &src, const QUrl &dest, KIO::JobFlags flags) {
-    Q_UNUSED(flags)
     if (src.scheme() == "file" && dest.scheme() == "stash") {
         if (copyFileToStash(src, dest)) return KIO::WorkerResult::pass();
+    }
+    if (src.scheme() == "stash" && dest.scheme() != "stash") {
+        QString fileName = src.fileName();
+        if (fileName.isEmpty()) {
+            fileName = src.path().split("/").last();
+        }
+        QUrl newDestPath = QUrl(dest.adjusted(QUrl::RemoveFilename).toString() + fileName);
+        if (moveStashToFile(src, newDestPath, flags)) {
+            return KIO::WorkerResult::pass();
+        }
+        return KIO::WorkerResult::fail(KIO::ERR_WORKER_DEFINED, i18n("Could not move from stash."));
     }
     return KIO::WorkerResult::fail(KIO::ERR_UNSUPPORTED_ACTION);
 }

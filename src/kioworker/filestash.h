@@ -38,6 +38,8 @@ private:
     bool isRoot(const QString &string);
     bool createUDSEntry(KIO::UDSEntry &entry, const FileStash::dirList &fileItem);
     bool copyFileToStash(const QUrl &src, const QUrl &dest);
+    bool copyStashToFile(const QUrl &src, const QUrl &dest, KIO::JobFlags flags);
+    bool moveStashToFile(const QUrl &src, const QUrl &dest, KIO::JobFlags flags);
 
     QStringList setFileList(const QUrl &url);
     QString setFileInfo(const QUrl &url);
@@ -47,6 +49,7 @@ private:
     const QString m_daemonPath = QStringLiteral("/StashNotifier");
 
 public:
+    KIO::WorkerResult get(const QUrl &url) override;
     KIO::WorkerResult listDir(const QUrl &url) override;
     KIO::WorkerResult copy(const QUrl &src, const QUrl &dest, int permissions, KIO::JobFlags flags) override;
     KIO::WorkerResult mkdir(const QUrl &url, int permissions) override;
