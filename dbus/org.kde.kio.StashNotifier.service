@@ -1,0 +1,3 @@
+[D-BUS Service]
+Name=org.kde.kio.StashNotifier
+Exec=/usr/bin/qdbus6 org.kde.kded6 /kded org.kde.kded6.loadModule stashnotifier
