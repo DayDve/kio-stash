@@ -122,7 +122,8 @@ bool FileStash::createUDSEntry(KIO::UDSEntry &entry, const FileStash::dirList &f
         QMimeType fileMimetype = mimeDatabase.mimeTypeForFile(fileItem.source);
         entry.fastInsert(KIO::UDSEntry::UDS_TARGET_URL, QUrl::fromLocalFile(fileItem.source).toString());
         entry.fastInsert(KIO::UDSEntry::UDS_MIME_TYPE, fileMimetype.name());
-        entry.fastInsert(KIO::UDSEntry::UDS_DISPLAY_NAME, name);
+        entry.fastInsert(KIO::UDSEntry::UDS_DISPLAY_NAME, QString("%1  [%2]").arg(name, fileItem.source));
+        entry.fastInsert(KIO::UDSEntry::UDS_COMMENT, fileItem.source);
         entry.fastInsert(KIO::UDSEntry::UDS_NAME, name);
         entry.fastInsert(KIO::UDSEntry::UDS_ACCESS, 0666);
         entry.fastInsert(KIO::UDSEntry::UDS_SIZE, entryInfo.size());
