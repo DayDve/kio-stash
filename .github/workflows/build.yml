@@ -2,10 +2,10 @@ name: Build DEB Package
 
 on:
   push:
-    branches: [ master, main ]
+    branches: [ master, main, packaging ]
     tags: [ 'v*' ]
   pull_request:
-    branches: [ master, main ]
+    branches: [ master, main, packaging ]
   workflow_dispatch:
 
 jobs:
@@ -34,3 +34,4 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: dist/*.deb
+          generate_release_notes: true
