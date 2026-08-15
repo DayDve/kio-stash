@@ -53,9 +53,10 @@ Architecture: amd64
 Maintainer: daydve <daydve@smbit.pro>
 Section: kde
 Priority: optional
-Depends: kf6-kio, libc6 (>= 2.34), libqt6core6t64, libqt6dbus6t64
-Description: Staging virtual folder for Dolphin (KDE Plasma 6 / KF6)
- Virtual folder protocol (stash:/) for Dolphin file manager on KDE Plasma 6.
+Depends: kf6-kio, libc6 (>= 2.38), libqt6core6t64, libqt6dbus6t64, libqt6gui6t64, libstdc++6 (>= 13)
+Recommends: dolphin
+Enhances: dolphin
+Description: Virtual folder protocol (stash:/) for Dolphin on KDE Plasma 6
  Custom KF6 port built for KDE Neon / Noble.
 EOF
 
