@@ -18,7 +18,6 @@ StashNotifier::StashNotifier(QObject *parent, const QList<QVariant> &var, const 
     , m_daemonPath(daemonPath)
 {
     dirWatch = new KDirWatch(this);
-    qDebug() << "Launching stash daemon.";
 
     new StashNotifierAdaptor(this);
     QDBusConnection dbus = QDBusConnection::sessionBus();
