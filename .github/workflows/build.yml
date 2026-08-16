@@ -1,0 +1,39 @@
+name: Build DEB Package
+
+on:
+  push:
+    branches: [ master, main, packaging ]
+    tags: [ 'v*' ]
+  pull_request:
+    branches: [ master, main, packaging ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build DEB Package
+        run: |
+          mkdir -p dist
+          docker buildx build --output type=local,dest=./dist .
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: kio-stash-deb
+          path: dist/*.deb
+
+      - name: Create Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*.deb
+          generate_release_notes: true
