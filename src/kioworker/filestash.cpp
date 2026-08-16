@@ -9,6 +9,7 @@
 #include <QDBusConnection>
 #include <QDBusMessage>
 #include <QDBusReply>
+#include <QDir>
 #include <QFile>
 #include <QFileInfo>
 #include <QMimeDatabase>
@@ -128,7 +129,7 @@ bool FileStash::createUDSEntry(KIO::UDSEntry &entry, const FileStash::dirList &f
         QMimeType fileMimetype = mimeDatabase.mimeTypeForFile(fileItem.source);
         entry.fastInsert(KIO::UDSEntry::UDS_TARGET_URL, QUrl::fromLocalFile(fileItem.source).toString());
         entry.fastInsert(KIO::UDSEntry::UDS_MIME_TYPE, fileMimetype.name());
-        entry.fastInsert(KIO::UDSEntry::UDS_DISPLAY_NAME, QString("%1  [%2]").arg(name, fileItem.source));
+        entry.fastInsert(KIO::UDSEntry::UDS_DISPLAY_NAME, name);
         entry.fastInsert(KIO::UDSEntry::UDS_COMMENT, fileItem.source);
         entry.fastInsert(KIO::UDSEntry::UDS_NAME, name);
         entry.fastInsert(KIO::UDSEntry::UDS_ACCESS, 0666);
@@ -214,8 +215,14 @@ bool FileStash::copyStashToFile(const QUrl &src, const QUrl &dest, KIO::JobFlags
     }
     if (item.type == NodeType::FileNode || item.type == NodeType::SymlinkNode) {
         if (dest.isLocalFile()) {
+            QFileInfo destInfo(dest.toLocalFile());
+            QDir().mkpath(destInfo.absolutePath());
             QFile::remove(dest.toLocalFile());
-            return QFile::copy(item.source, dest.toLocalFile());
+            if (QFile::copy(item.source, dest.toLocalFile())) {
+                return true;
+            }
+            KIO::Job *job = KIO::copy(QUrl::fromLocalFile(item.source), dest, KIO::Overwrite | KIO::HideProgressInfo);
+            return job->exec();
         } else {
             KIO::Job *job = KIO::copy(QUrl::fromLocalFile(item.source), dest, KIO::Overwrite | KIO::HideProgressInfo);
             return job->exec();
@@ -234,8 +241,16 @@ bool FileStash::moveStashToFile(const QUrl &src, const QUrl &dest, KIO::JobFlags
     if (item.type == NodeType::FileNode || item.type == NodeType::SymlinkNode) {
         bool moved = false;
         if (dest.isLocalFile()) {
+            QFileInfo destInfo(dest.toLocalFile());
+            QDir().mkpath(destInfo.absolutePath());
             QFile::remove(dest.toLocalFile());
             moved = QFile::rename(item.source, dest.toLocalFile());
+            if (!moved) {
+                moved = QFile::copy(item.source, dest.toLocalFile());
+                if (moved) {
+                    QFile::remove(item.source);
+                }
+            }
         } else {
             KIO::Job *job = KIO::move(QUrl::fromLocalFile(item.source), dest, KIO::Overwrite | KIO::HideProgressInfo);
             moved = job->exec();
@@ -270,6 +285,17 @@ KIO::WorkerResult FileStash::copy(const QUrl &src, const QUrl &dest, int permiss
         return KIO::WorkerResult::fail(KIO::ERR_WORKER_DEFINED, i18n("Could not copy from stash."));
     }
 
+    if (src.scheme() == "stash" && dest.scheme() == "stash") {
+        QString fileInfo = setFileInfo(src);
+        FileStash::dirList item = createDirListItem(fileInfo);
+        if (item.type != NodeType::InvalidNode && !item.source.isEmpty()) {
+            if (copyFileToStash(QUrl::fromLocalFile(item.source), newDestPath)) {
+                return KIO::WorkerResult::pass();
+            }
+        }
+        return KIO::WorkerResult::fail(KIO::ERR_WORKER_DEFINED, i18n("Could not copy in stash."));
+    }
+
     return KIO::WorkerResult::fail(KIO::ERR_UNSUPPORTED_ACTION, src.scheme());
 }
 
@@ -286,6 +312,17 @@ KIO::WorkerResult FileStash::del(const QUrl &url, bool isFile) {
 KIO::WorkerResult FileStash::rename(const QUrl &src, const QUrl &dest, KIO::JobFlags flags) {
     if (src.scheme() == "file" && dest.scheme() == "stash") {
         if (copyFileToStash(src, dest)) return KIO::WorkerResult::pass();
+    }
+    if (src.scheme() == "stash" && dest.scheme() == "stash") {
+        QString fileInfo = setFileInfo(src);
+        FileStash::dirList item = createDirListItem(fileInfo);
+        if (item.type != NodeType::InvalidNode && !item.source.isEmpty()) {
+            if (copyFileToStash(QUrl::fromLocalFile(item.source), dest)) {
+                del(src, true);
+                return KIO::WorkerResult::pass();
+            }
+        }
+        return KIO::WorkerResult::fail(KIO::ERR_WORKER_DEFINED, i18n("Could not rename in stash."));
     }
     if (src.scheme() == "stash" && dest.scheme() != "stash") {
         QString fileName = src.fileName();

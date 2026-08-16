@@ -24,6 +24,8 @@
 #include <KIO/MkdirJob>
 #include <KIO/StatJob>
 
+#include <QThread>
+
 WorkerTest::WorkerTest()
     : tmpFolder("WorkerTest")
     , m_fileTestFile("TestFile")
@@ -50,11 +52,21 @@ void WorkerTest::initTestCase()
     replyMessage = QDBusConnection::sessionBus().call(msg);
     if (replyMessage.type() == QDBusMessage::ErrorMessage) {
         qDebug() << "Launching fallback daemon";
-        const QString program = "./testdaemon";
+        QString program = QCoreApplication::applicationDirPath() + QStringLiteral("/testdaemon");
+        if (!QFile::exists(program)) {
+            program = QStringLiteral("./testdaemon");
+        }
         stashDaemonProcess->start(program, QStringList{});
+        if (stashDaemonProcess->waitForStarted(5000)) {
+            for (int i = 0; i < 50; ++i) {
+                QThread::msleep(100);
+                replyMessage = QDBusConnection::sessionBus().call(msg);
+                if (replyMessage.type() != QDBusMessage::ErrorMessage) {
+                    break;
+                }
+            }
+        }
     }
-
-    replyMessage = QDBusConnection::sessionBus().call(msg);
 
     if (replyMessage.type() != QDBusMessage::ErrorMessage) {
         qDebug() << "Test case initialised";
@@ -392,3 +404,11 @@ void WorkerTest::cleanup()
 }
 
 QTEST_MAIN(WorkerTest)
+
+void WorkerTest::slotEntries(KIO::Job *job, const KIO::UDSEntryList &list)
+{
+    Q_UNUSED(job)
+    Q_UNUSED(list)
+}
+
+#include "workertest.moc"
