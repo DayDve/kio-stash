@@ -30,7 +30,7 @@ RUN apt-get update && apt-get install --no-install-recommends -y \
 WORKDIR /src
 COPY . /src
 
-ARG PKG_VERSION=1.0.0+daydve1
+ARG PKG_VERSION=1.0.0+daydve
 
 RUN rm -rf /src/build && \
     mkdir -p /src/build && \
@@ -38,20 +38,15 @@ RUN rm -rf /src/build && \
     cmake .. -DCMAKE_INSTALL_PREFIX=/usr -DKDE_INSTALL_USE_QT_SYS_PATHS=ON && \
     make -j$(nproc)
 
-RUN mkdir -p /pkg/DEBIAN \
-    /pkg/usr/lib/x86_64-linux-gnu/qt6/plugins/kf6/kio \
-    /pkg/usr/lib/x86_64-linux-gnu/qt6/plugins/kf6/kded \
-    /pkg/usr/share/dbus-1/services \
-    /pkg/usr/share/kservices6 \
-    /pkg/usr/share/metainfo
-
 RUN DESTDIR=/pkg make -C /src/build install
 
-RUN cat <<EOF > /pkg/DEBIAN/control
+RUN ARCH=$(dpkg --print-architecture) && \
+    mkdir -p /pkg/DEBIAN && \
+    cat <<EOF > /pkg/DEBIAN/control
 Package: kio-stash
 Version: ${PKG_VERSION}
-Architecture: amd64
-Maintainer: daydve <daydve@smbit.pro>
+Architecture: ${ARCH}
+Maintainer: Vitaliy Elin <daydve@smbit.pro>
 Section: kde
 Priority: optional
 Depends: kf6-kio, libc6 (>= 2.38), libqt6core6t64, libqt6dbus6t64, libqt6gui6t64, libstdc++6 (>= 13)
@@ -61,7 +56,8 @@ Description: Virtual folder protocol (stash:/) for Dolphin on KDE Plasma 6
  Custom KF6 port built for KDE Neon / Noble.
 EOF
 
-RUN dpkg-deb --build /pkg /kio-stash_${PKG_VERSION}_amd64.deb
+RUN ARCH=$(dpkg --print-architecture) && \
+    dpkg-deb --build /pkg /kio-stash_${PKG_VERSION}_${ARCH}.deb
 
 FROM scratch AS output
 COPY --from=builder /kio-stash_*.deb /
