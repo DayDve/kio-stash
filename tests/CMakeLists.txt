@@ -10,6 +10,7 @@ enable_testing()
 set(CMAKE_AUTOMOC_ON)
 add_executable(workertest ${workertest_SRCS})
 add_test(NAME workertest COMMAND workertest)
+set_tests_properties(workertest PROPERTIES ENVIRONMENT "QT_PLUGIN_PATH=${CMAKE_BINARY_DIR}/bin:${KDE_INSTALL_FULL_PLUGINDIR}:$ENV{QT_PLUGIN_PATH}:/usr/lib/qt6/plugins:/usr/lib64/qt6/plugins:/usr/local/lib/qt6/plugins")
 
 target_link_libraries(workertest
     KF6::KIOCore
