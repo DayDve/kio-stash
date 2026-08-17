@@ -126,19 +126,21 @@ void StashNotifier::addPath(const QString &source, const QString &stashPath, int
 {
     QString processedPath = processString(stashPath);
 
-    if (fileSystem->findNode(stashPath).type == StashFileSystem::NodeType::InvalidNode) {
-        if (fileType == StashFileSystem::NodeType::DirectoryNode) {
-            dirWatch->addDir(processedPath);
-            fileSystem->addFolder(processedPath);
-        } else if (fileType == StashFileSystem::NodeType::FileNode) {
-            dirWatch->addFile(source);
-            fileSystem->addFile(processString(source), stashPath);
-        } else if (fileType == StashFileSystem::NodeType::SymlinkNode) {
-            dirWatch->addFile(source);
-            fileSystem->addSymlink(processString(source), stashPath);
-        }
-        emit listChanged();
+    if (fileSystem->findNode(stashPath).type != StashFileSystem::NodeType::InvalidNode) {
+        fileSystem->delEntry(stashPath);
     }
+
+    if (fileType == StashFileSystem::NodeType::DirectoryNode) {
+        dirWatch->addDir(processedPath);
+        fileSystem->addFolder(processedPath);
+    } else if (fileType == StashFileSystem::NodeType::FileNode) {
+        dirWatch->addFile(source);
+        fileSystem->addFile(processString(source), stashPath);
+    } else if (fileType == StashFileSystem::NodeType::SymlinkNode) {
+        dirWatch->addFile(source);
+        fileSystem->addSymlink(processString(source), stashPath);
+    }
+    emit listChanged();
 }
 
 QString StashNotifier::processString(const QString &path)
@@ -152,7 +154,9 @@ QString StashNotifier::processString(const QString &path)
 
 void StashNotifier::removeWatchedPath(const QString &filePath)
 {
-    qDebug() << filePath;
+    if (QFile::exists(filePath)) {
+        return;
+    }
     QStringList matchedFiles;
     fileSystem->findPathFromSource(filePath, "", matchedFiles, fileSystem->getRoot().children);
     foreach (QString file, matchedFiles) {
