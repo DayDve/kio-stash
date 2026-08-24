@@ -3,3 +3,8 @@ install(
     FILES org.kde.kio.StashNotifier.xml
     DESTINATION ${KDE_INSTALL_DBUSINTERFACEDIR}
 )
+
+install(
+    FILES org.kde.kio.StashNotifier.service
+    DESTINATION ${KDE_INSTALL_DBUSSERVICEDIR}
+)
