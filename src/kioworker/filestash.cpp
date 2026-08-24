@@ -54,12 +54,16 @@ FileStash::~FileStash()
 
 bool FileStash::rewriteUrl(const QUrl &url, QUrl &newUrl)
 {
-    if (url.scheme() != "file") {
-        newUrl.setScheme("file");
-        newUrl.setPath(url.path());
-    } else {
-        newUrl = url;
+    if (url.scheme() == "stash") {
+        const QString fileInfo = setFileInfo(url);
+        const FileStash::dirList item = createDirListItem(fileInfo);
+        if (item.type != NodeType::InvalidNode && !item.source.isEmpty()) {
+            newUrl = QUrl::fromLocalFile(item.source);
+            return true;
+        }
+        return false;
     }
+    newUrl = url;
     return true;
 }
 
@@ -69,6 +73,7 @@ void FileStash::createTopLevelDirEntry(KIO::UDSEntry &entry)
     entry.fastInsert(KIO::UDSEntry::UDS_NAME, QStringLiteral("."));
     entry.fastInsert(KIO::UDSEntry::UDS_FILE_TYPE, 0040000);
     entry.fastInsert(KIO::UDSEntry::UDS_ACCESS, 0700);
+    entry.fastInsert(KIO::UDSEntry::UDS_USER, QString::fromLocal8Bit(qgetenv("USER")));
     entry.fastInsert(KIO::UDSEntry::UDS_MIME_TYPE, QStringLiteral("inode/directory"));
 }
 
@@ -123,7 +128,9 @@ bool FileStash::createUDSEntry(KIO::UDSEntry &entry, const FileStash::dirList &f
     switch (fileItem.type) {
     case NodeType::DirectoryNode:
         entry.fastInsert(KIO::UDSEntry::UDS_FILE_TYPE, 0040000);
-        entry.fastInsert(KIO::UDSEntry::UDS_MIME_TYPE, QString("inode/directory"));
+        entry.fastInsert(KIO::UDSEntry::UDS_ACCESS, 0700);
+        entry.fastInsert(KIO::UDSEntry::UDS_USER, QString::fromLocal8Bit(qgetenv("USER")));
+        entry.fastInsert(KIO::UDSEntry::UDS_MIME_TYPE, QStringLiteral("inode/directory"));
         entry.fastInsert(KIO::UDSEntry::UDS_NAME, QUrl(stringFilePath).fileName());
         entry.fastInsert(KIO::UDSEntry::UDS_DISPLAY_NAME, QUrl(stringFilePath).fileName());
         break;
@@ -179,17 +186,21 @@ FileStash::dirList FileStash::createDirListItem(const QString &fileInfo)
 KIO::WorkerResult FileStash::listDir(const QUrl &url)
 {
     QStringList fileList = setFileList(url);
-    if (!fileList.size()) {
-        return KIO::WorkerResult::pass();
-    }
     FileStash::dirList item;
     KIO::UDSEntry entry;
     if (isRoot(url.path())) {
         createTopLevelDirEntry(entry);
         listEntry(entry);
+    } else {
+        entry.fastInsert(KIO::UDSEntry::UDS_NAME, QStringLiteral("."));
+        entry.fastInsert(KIO::UDSEntry::UDS_FILE_TYPE, 0040000);
+        entry.fastInsert(KIO::UDSEntry::UDS_ACCESS, 0700);
+        entry.fastInsert(KIO::UDSEntry::UDS_USER, QString::fromLocal8Bit(qgetenv("USER")));
+        entry.fastInsert(KIO::UDSEntry::UDS_MIME_TYPE, QStringLiteral("inode/directory"));
+        listEntry(entry);
     }
-    if (fileList.at(0) == "error::error::InvalidNode") {
-        return KIO::WorkerResult::fail(KIO::ERR_WORKER_DEFINED, i18n("The file either does not exist or has not been stashed yet."));
+    if (fileList.isEmpty() || fileList.at(0) == "error::error::InvalidNode") {
+        return KIO::WorkerResult::pass();
     }
     for (auto it = fileList.begin(); it != fileList.end(); ++it) {
         entry.clear();
@@ -224,13 +235,14 @@ bool FileStash::copyFileToStash(const QUrl &src, const QUrl &dest, KIO::JobFlags
     Q_UNUSED(flags)
 
     NodeType fileType;
-    QFileInfo fileInfo = QFileInfo(src.path());
-    if (fileInfo.isFile()) {
-        fileType = NodeType::FileNode;
-    } else if (fileInfo.isSymLink()) {
+    QString srcPath = src.isLocalFile() ? src.toLocalFile() : src.path();
+    QFileInfo fileInfo(srcPath);
+    if (fileInfo.isSymLink()) {
         fileType = NodeType::SymlinkNode;
-    } else if (fileInfo.isDir()) { // if I'm not wrong, this can never happen, but we should handle it anyway
+    } else if (fileInfo.isDir()) {
         fileType = NodeType::DirectoryNode;
+    } else if (fileInfo.isFile() || fileInfo.exists()) {
+        fileType = NodeType::FileNode;
     } else {
         return false;
     }
@@ -240,7 +252,7 @@ bool FileStash::copyFileToStash(const QUrl &src, const QUrl &dest, KIO::JobFlags
     msg = QDBusMessage::createMethodCall(m_daemonService, m_daemonPath, "", "addPath");
     QString destinationPath = dest.path();
 
-    msg << src.path() << destinationPath << (int)fileType;
+    msg << srcPath << destinationPath << (int)fileType;
     replyMessage = QDBusConnection::sessionBus().call(msg);
     if (replyMessage.type() != QDBusMessage::ErrorMessage) {
         return true;
@@ -254,7 +266,7 @@ bool FileStash::copyStashToFile(const QUrl &src, const QUrl &dest, KIO::JobFlags
     const QString destInfo = setFileInfo(src);
     const FileStash::dirList fileItem = createDirListItem(destInfo);
 
-    if (fileItem.type != NodeType::DirectoryNode) {
+    if (fileItem.type != NodeType::DirectoryNode && !fileItem.source.isEmpty()) {
         QByteArray physicalPath_c = QFile::encodeName(fileItem.source);
         QT_STATBUF buff;
         QT_LSTAT(physicalPath_c, &buff);
@@ -269,27 +281,16 @@ bool FileStash::copyStashToStash(const QUrl &src, const QUrl &dest, KIO::JobFlag
 {
     Q_UNUSED(flags)
 
-    KIO::UDSEntry entry;
-
-    statUrl(src, entry);
-    KFileItem fileItem(entry, src);
-
     const dirList item = createDirListItem(setFileInfo(src));
-    NodeType fileType;
-    if (fileItem.isFile()) {
-        fileType = NodeType::FileNode;
-    } else if (fileItem.isLink()) {
-        fileType = NodeType::SymlinkNode;
-    } else if (fileItem.isDir()) {
-        fileType = NodeType::DirectoryNode;
-    } else {
+    NodeType fileType = item.type;
+    if (fileType == NodeType::InvalidNode || item.source.isEmpty()) {
         return false;
     }
 
     QDBusMessage replyMessage;
     QDBusMessage msg;
     msg = QDBusMessage::createMethodCall(m_daemonService, m_daemonPath, "", "addPath");
-    msg << item.source << dest.path() << fileType;
+    msg << item.source << dest.path() << (int)fileType;
     replyMessage = QDBusConnection::sessionBus().call(msg);
     if (replyMessage.type() != QDBusMessage::ErrorMessage) {
         return true;
@@ -300,11 +301,11 @@ bool FileStash::copyStashToStash(const QUrl &src, const QUrl &dest, KIO::JobFlag
 
 KIO::WorkerResult FileStash::copy(const QUrl &src, const QUrl &dest, int permissions, KIO::JobFlags flags)
 {
-    KIO::UDSEntry entry;
-    statUrl(src, entry);
-    KFileItem item(entry, src);
-    QUrl newDestPath;
-    newDestPath = QUrl(dest.adjusted(QUrl::RemoveFilename).toString() + item.name());
+    QString fileName = src.fileName();
+    if (fileName.isEmpty()) {
+        fileName = src.path().split(QLatin1Char('/')).last();
+    }
+    QUrl newDestPath = QUrl(dest.adjusted(QUrl::RemoveFilename).toString() + fileName);
 
     if (src.scheme() != "stash" && dest.scheme() == "stash") {
         if (copyFileToStash(src, newDestPath, flags)) {
@@ -328,7 +329,7 @@ KIO::WorkerResult FileStash::copy(const QUrl &src, const QUrl &dest, int permiss
     if (dest.scheme() == "mtp") {
         return KIO::WorkerResult::fail(KIO::ERR_WORKER_DEFINED, i18n("Copying to mtp workers is still under development!"));
     }
-    return KIO::ForwardingWorkerBase::copy(item.targetUrl(), newDestPath, permissions, flags);
+    return KIO::ForwardingWorkerBase::copy(src, newDestPath, permissions, flags);
 }
 
 KIO::WorkerResult FileStash::del(const QUrl &url, bool isFile)
