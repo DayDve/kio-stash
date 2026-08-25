@@ -15,6 +15,7 @@
 #include <QStandardPaths>
 #include <QTemporaryFile>
 #include <QTest>
+#include <QThread>
 
 #include <KFileItem>
 #include <KIO/CopyJob>
@@ -50,11 +51,21 @@ void WorkerTest::initTestCase()
     replyMessage = QDBusConnection::sessionBus().call(msg);
     if (replyMessage.type() == QDBusMessage::ErrorMessage) {
         qDebug() << "Launching fallback daemon";
-        const QString program = "./testdaemon";
+        QString program = QCoreApplication::applicationDirPath() + QStringLiteral("/testdaemon");
+        if (!QFile::exists(program)) {
+            program = QStringLiteral("./testdaemon");
+        }
         stashDaemonProcess->start(program, QStringList{});
+        if (stashDaemonProcess->waitForStarted(5000)) {
+            for (int i = 0; i < 50; ++i) {
+                QThread::msleep(50);
+                replyMessage = QDBusConnection::sessionBus().call(msg);
+                if (replyMessage.type() != QDBusMessage::ErrorMessage) {
+                    break;
+                }
+            }
+        }
     }
-
-    replyMessage = QDBusConnection::sessionBus().call(msg);
 
     if (replyMessage.type() != QDBusMessage::ErrorMessage) {
         qDebug() << "Test case initialised";
@@ -67,8 +78,8 @@ void WorkerTest::initTestCase()
 void WorkerTest::createTestFiles() // also find a way to reset the directory prior to use
 {
     QDir tmpDir;
-    tmpDir.mkdir(tmpDirPath()); // creates test dir
-    tmpDir.mkdir(tmpDirPath() + m_fileTestFolder);
+    tmpDir.mkpath(tmpDirPath()); // creates test dir
+    tmpDir.mkpath(tmpDirPath() + m_fileTestFolder);
 
     QFile tmpFile;
     stashDirectory('/' + m_stashTestFolder);
@@ -126,7 +137,7 @@ void WorkerTest::statItem(const QUrl &url, const int &type)
     }
     QVERIFY(item.isReadable());
     QVERIFY(!item.isHidden());
-    QCOMPARE(item.text(), url.fileName());
+    QCOMPARE(item.name(), url.fileName());
 }
 
 void WorkerTest::stashFile(const QString &realPath, const QString &stashPath)
@@ -263,7 +274,7 @@ void WorkerTest::statDirectoryInRoot()
 void WorkerTest::statSymlinkInRoot()
 {
     QUrl url("stash:/" + m_stashTestSymlink);
-    stashSymlink(url.path(), url.path());
+    stashSymlink(tmpDirPath() + m_fileTestFile, url.path());
     KIO::UDSEntry entry;
     QVERIFY(statUrl(url, entry));
     KFileItem item(entry, url);
@@ -392,3 +403,8 @@ void WorkerTest::cleanup()
 }
 
 QTEST_MAIN(WorkerTest)
+void WorkerTest::slotEntries(KIO::Job *job, const KIO::UDSEntryList &list)
+{
+    Q_UNUSED(job)
+    Q_UNUSED(list)
+}

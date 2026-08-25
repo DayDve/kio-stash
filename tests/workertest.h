@@ -76,6 +76,7 @@ private slots:
 
     void listRootDir();
     void listSubDir();
+    void slotEntries(KIO::Job *job, const KIO::UDSEntryList &list);
 
     void delRootFile();
     void delFileInDirectory();
