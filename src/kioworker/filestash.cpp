@@ -203,9 +203,6 @@ KIO::WorkerResult FileStash::listDir(const QUrl &url)
         createTopLevelDirEntry(entry);
         listEntry(entry);
     }
-    if (fileList.at(0) == "error::error::InvalidNode") {
-        return KIO::WorkerResult::fail(KIO::ERR_DOES_NOT_EXIST, url.toDisplayString());
-    }
     for (auto it = fileList.begin(); it != fileList.end(); ++it) {
         entry.clear();
         item = createDirListItem(*it);

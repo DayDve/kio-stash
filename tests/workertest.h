@@ -50,6 +50,7 @@ private:
     const QString m_fileTestFile;
     const QString m_fileTestFolder;
     const QString m_stashTestFolder;
+    const QString m_stashEmptyFolder;
     const QString m_stashTestSymlink;
     const QString m_stashTestFile;
     const QString m_stashTestFileInSubDirectory;
@@ -76,6 +77,7 @@ private slots:
 
     void listRootDir();
     void listSubDir();
+    void listEmptyDir();
 
     void delRootFile();
     void delFileInDirectory();

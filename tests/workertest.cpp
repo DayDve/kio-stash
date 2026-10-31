@@ -29,6 +29,7 @@ WorkerTest::WorkerTest()
     , m_fileTestFile("TestFile")
     , m_fileTestFolder("TestSubFolder")
     , m_stashTestFolder("StashTestFolder")
+    , m_stashEmptyFolder("StashEmptyFolder")
     , m_stashTestSymlink("StashTestSymlink")
     , m_stashTestFile("StashFile")
     , m_stashTestFileInSubDirectory("SubTestFile")
@@ -205,6 +206,14 @@ void WorkerTest::listRootDir()
 void WorkerTest::listSubDir()
 {
     KIO::ListJob *job = KIO::listDir(QUrl("stash:/" + m_stashTestFolder), KIO::HideProgressInfo);
+    bool ok = job->exec();
+    QVERIFY(ok);
+}
+
+void WorkerTest::listEmptyDir()
+{
+    stashDirectory('/' + m_stashEmptyFolder);
+    KIO::ListJob *job = KIO::listDir(QUrl("stash:/" + m_stashEmptyFolder), KIO::HideProgressInfo);
     bool ok = job->exec();
     QVERIFY(ok);
 }
